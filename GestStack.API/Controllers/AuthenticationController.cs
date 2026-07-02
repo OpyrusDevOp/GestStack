@@ -1,21 +1,32 @@
 using GestStack.API.Contracts.Auth;
+using GestStack.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GestStack.API.Controllers;
 
 [ApiController]
 [Route("auth")]
-public class AuthenticationController : ControllerBase
+public class AuthenticationController(IAuthService authService) : ControllerBase
 {
     [HttpPost("[action]")]
-    public async Task<ActionResult> Register(RegisterRequest info)
+    public async Task<ActionResult<AuthResponse>> Register(RegisterRequest info)
     {
-        return Ok("");
+        var result = await authService.RegisterAsync(info.Username, info.Fullname, info.Password);
+
+        if (!result.Succeeded)
+            return BadRequest(new { result.Errors });
+
+        return Ok(new AuthResponse(result.Token!));
     }
 
     [HttpPost("[action]")]
-    public async Task<ActionResult> Login(LoginRequest info)
+    public async Task<ActionResult<AuthResponse>> Login(LoginRequest info)
     {
-        return Ok("");
+        var result = await authService.LoginAsync(info.Username, info.Password);
+
+        if (!result.Succeeded)
+            return Unauthorized(new { result.Errors });
+
+        return Ok(new AuthResponse(result.Token!));
     }
 }
