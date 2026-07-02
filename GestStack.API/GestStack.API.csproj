@@ -14,4 +14,8 @@
     <ProjectReference Include="..\GestStack.Infrastructure\GestStack.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\GestStack.Domain\GestStack.Domain.csproj" />
+  </ItemGroup>
+
 </Project>
