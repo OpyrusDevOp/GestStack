@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="GestStack.API/GestStack.API.csproj" />
+  <Project Path="GestStack.Application/GestStack.Application.csproj" />
+  <Project Path="GestStack.DesktopClient/GestStack.DesktopClient.csproj" />
+  <Project Path="GestStack.Domain/GestStack.Domain.csproj" />
+  <Project Path="GestStack.Infrastructure/GestStack.Infrastructure.csproj" />
+  <Project Path="GestStack.Tests.Unit/GestStack.Tests.Unit.csproj" />
+</Solution>

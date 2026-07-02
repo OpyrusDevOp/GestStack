@@ -1,0 +1,6 @@
+@GestStack.API_HostAddress = http://localhost:5119
+
+GET {{GestStack.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
