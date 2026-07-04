@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GestStack.Application.Common.Security;
 using GestStack.Infrastructure.Identity;
 using GestStack.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -21,6 +22,7 @@ public class AuthServiceTests
 
     private readonly UserManager<AppUser> _userManager;
     private readonly SignInManager<AppUser> _signInManager;
+    private readonly RoleManager<IdentityRole> _roleManager;
     private readonly AuthService _sut;
 
     public AuthServiceTests()
@@ -33,7 +35,11 @@ public class AuthServiceTests
             Substitute.For<IHttpContextAccessor>(),
             Substitute.For<IUserClaimsPrincipalFactory<AppUser>>(),
             null, null, null, null);
-        _sut = new AuthService(_userManager, _signInManager, Options.Create(Settings));
+        _roleManager = Substitute.For<RoleManager<IdentityRole>>(
+            Substitute.For<IRoleStore<IdentityRole>>(),
+            null, null, null, null);
+        _userManager.GetClaimsAsync(Arg.Any<AppUser>()).Returns([]);
+        _sut = new AuthService(_userManager, _signInManager, _roleManager, Options.Create(Settings));
     }
 
     [Fact]
@@ -128,6 +134,42 @@ public class AuthServiceTests
             jwt.ValidTo,
             DateTime.UtcNow.AddMinutes(Settings.ExpiryMinutes - 1),
             DateTime.UtcNow.AddMinutes(Settings.ExpiryMinutes + 1));
+    }
+
+    [Fact]
+    public async Task LoginAsync_EmbedsRoleAndUserPermissionsInToken()
+    {
+        var user = new AppUser { UserName = "jdoe" };
+        var role = new IdentityRole(Roles.Administrator);
+        _userManager.FindByNameAsync("jdoe").Returns(user);
+        _userManager.GetRolesAsync(user).Returns([Roles.Administrator]);
+        _userManager.GetClaimsAsync(user).Returns([
+            new Claim(CustomClaims.Permission, Permissions.Finance.Get),
+            new Claim(CustomClaims.Permission, Permissions.Inventory.Modify)]);
+        _roleManager.FindByNameAsync(Roles.Administrator).Returns(role);
+        _roleManager.GetClaimsAsync(role).Returns([
+            new Claim(CustomClaims.Permission, Permissions.Inventory.Modify),
+            new Claim(CustomClaims.Permission, Permissions.Procurement.PurchaseRequisitions.Modify),
+            new Claim("other-claim", "ignored")]);
+        _signInManager.CheckPasswordSignInAsync(user, "Passw0rd!", true)
+            .Returns(SignInResult.Success);
+
+        var result = await _sut.LoginAsync("jdoe", "Passw0rd!");
+
+        Assert.True(result.Succeeded);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(result.Token);
+        var permissions = jwt.Claims
+            .Where(c => c.Type == CustomClaims.Permission)
+            .Select(c => c.Value)
+            .ToArray();
+        // deduplicated union of role permissions and user-specific permissions
+        Assert.Equivalent(new[]
+        {
+            Permissions.Inventory.Modify,
+            Permissions.Procurement.PurchaseRequisitions.Modify,
+            Permissions.Finance.Get,
+        }, permissions);
+        Assert.DoesNotContain(jwt.Claims, c => c.Type == "other-claim");
     }
 
     [Fact]

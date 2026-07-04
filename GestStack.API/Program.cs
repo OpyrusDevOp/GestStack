@@ -1,6 +1,8 @@
 using System.Text;
+using GestStack.API.Authorization;
 using GestStack.Application.Common.Interfaces;
 using GestStack.Infrastructure.Identity;
+using Microsoft.AspNetCore.Authorization;
 using GestStack.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -51,8 +53,14 @@ builder
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    await IdentityDataSeeder.SeedAsync(scope.ServiceProvider);
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

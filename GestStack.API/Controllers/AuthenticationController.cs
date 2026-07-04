@@ -1,5 +1,8 @@
+using System.Security.Claims;
 using GestStack.API.Contracts.Auth;
 using GestStack.Application.Common.Interfaces;
+using GestStack.Application.Common.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GestStack.API.Controllers;
@@ -29,4 +32,16 @@ public class AuthenticationController(IAuthService authService) : ControllerBase
 
         return Ok(new AuthResponse(result.Token!));
     }
+
+    [HttpGet("[action]")]
+    [Authorize]
+    public IActionResult Me() =>
+        Ok(
+            new
+            {
+                Username = User.Identity?.Name,
+                Roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value),
+                Permissions = User.FindAll(CustomClaims.Permission).Select(c => c.Value),
+            }
+        );
 }
