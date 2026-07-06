@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GestStack.Application\GestStack.Application.csproj" />
+    <ProjectReference Include="..\GestStack.Domain\GestStack.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
