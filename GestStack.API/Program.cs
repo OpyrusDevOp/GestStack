@@ -31,6 +31,7 @@ builder
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IRoleService, RoleService>();
 
 var jwtSettings =
     builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()

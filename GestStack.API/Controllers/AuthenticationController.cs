@@ -19,7 +19,7 @@ public class AuthenticationController(IAuthService authService) : ControllerBase
         if (!result.Succeeded)
             return BadRequest(new { result.Errors });
 
-        return Ok(new AuthResponse(result.Token!));
+        return Ok(new AuthResponse(result.Token!, result.RefreshToken!));
     }
 
     [HttpPost("[action]")]
@@ -30,7 +30,25 @@ public class AuthenticationController(IAuthService authService) : ControllerBase
         if (!result.Succeeded)
             return Unauthorized(new { result.Errors });
 
-        return Ok(new AuthResponse(result.Token!));
+        return Ok(new AuthResponse(result.Token!, result.RefreshToken!));
+    }
+
+    [HttpPost("[action]")]
+    public async Task<ActionResult<AuthResponse>> Refresh(RefreshRequest info)
+    {
+        var result = await authService.RefreshAsync(info.RefreshToken);
+
+        if (!result.Succeeded)
+            return Unauthorized(new { result.Errors });
+
+        return Ok(new AuthResponse(result.Token!, result.RefreshToken!));
+    }
+
+    [HttpPost("[action]")]
+    public async Task<IActionResult> Logout(RefreshRequest info)
+    {
+        await authService.RevokeAsync(info.RefreshToken);
+        return NoContent();
     }
 
     [HttpGet("[action]")]

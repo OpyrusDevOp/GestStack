@@ -17,6 +17,14 @@ public static class Permissions
         }
     }
 
+    public static class Roles
+    {
+        public const string Get = "roles:get";
+        public const string Create = "roles:create";
+        public const string Modify = "roles:modify";
+        public const string Delete = "roles:delete";
+    }
+
     public static class Inventory
     {
         public const string Get = "inventory:get";

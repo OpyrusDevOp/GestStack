@@ -5,6 +5,7 @@ using GestStack.Infrastructure.Identity;
 using GestStack.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
@@ -23,6 +24,7 @@ public class AuthServiceTests
     private readonly UserManager<AppUser> _userManager;
     private readonly SignInManager<AppUser> _signInManager;
     private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly AppDbContext _db;
     private readonly AuthService _sut;
 
     public AuthServiceTests()
@@ -38,8 +40,25 @@ public class AuthServiceTests
         _roleManager = Substitute.For<RoleManager<IdentityRole>>(
             Substitute.For<IRoleStore<IdentityRole>>(),
             null, null, null, null);
+        _db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
         _userManager.GetClaimsAsync(Arg.Any<AppUser>()).Returns([]);
-        _sut = new AuthService(_userManager, _signInManager, _roleManager, Options.Create(Settings));
+        _sut = new AuthService(
+            _userManager, _signInManager, _roleManager, _db, Options.Create(Settings));
+    }
+
+    private async Task<AppUser> CreateLoggableUserAsync(string username = "jdoe")
+    {
+        var user = new AppUser { UserName = username };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+        _userManager.FindByNameAsync(username).Returns(user);
+        _userManager.GetRolesAsync(user).Returns([]);
+        _signInManager.CheckPasswordSignInAsync(user, "Passw0rd!", true)
+            .Returns(SignInResult.Success);
+        return user;
     }
 
     [Fact]
@@ -170,6 +189,102 @@ public class AuthServiceTests
             Permissions.Finance.Get,
         }, permissions);
         Assert.DoesNotContain(jwt.Claims, c => c.Type == "other-claim");
+    }
+
+    [Fact]
+    public async Task LoginAsync_ReturnsRefreshTokenAndStoresOnlyItsHash()
+    {
+        await CreateLoggableUserAsync();
+
+        var result = await _sut.LoginAsync("jdoe", "Passw0rd!");
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.RefreshToken);
+        var stored = Assert.Single(_db.RefreshTokens);
+        Assert.NotEqual(result.RefreshToken, stored.TokenHash);
+        Assert.DoesNotContain(result.RefreshToken, stored.TokenHash);
+        Assert.InRange(
+            stored.ExpiresAtUtc,
+            DateTime.UtcNow.AddDays(Settings.RefreshTokenExpiryDays).AddMinutes(-1),
+            DateTime.UtcNow.AddDays(Settings.RefreshTokenExpiryDays).AddMinutes(1));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_RotatesTokenAndEmbedsCurrentPermissions()
+    {
+        var user = await CreateLoggableUserAsync();
+        var login = await _sut.LoginAsync("jdoe", "Passw0rd!");
+
+        // Permissions granted after login must show up in the refreshed access token.
+        var role = new IdentityRole(Roles.Administrator);
+        _userManager.GetRolesAsync(user).Returns([Roles.Administrator]);
+        _roleManager.FindByNameAsync(Roles.Administrator).Returns(role);
+        _roleManager.GetClaimsAsync(role).Returns([
+            new Claim(CustomClaims.Permission, Permissions.Inventory.Get)]);
+
+        var refreshed = await _sut.RefreshAsync(login.RefreshToken!);
+
+        Assert.True(refreshed.Succeeded);
+        Assert.NotEqual(login.RefreshToken, refreshed.RefreshToken);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(refreshed.Token);
+        Assert.Contains(jwt.Claims,
+            c => c.Type == CustomClaims.Permission && c.Value == Permissions.Inventory.Get);
+
+        // The old refresh token was rotated out and no longer works.
+        var replay = await _sut.RefreshAsync(login.RefreshToken!);
+        Assert.False(replay.Succeeded);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_WithUnknownToken_Fails()
+    {
+        var result = await _sut.RefreshAsync("not-a-real-token");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(["Invalid refresh token."], result.Errors);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_WithExpiredToken_Fails()
+    {
+        var user = await CreateLoggableUserAsync();
+        var login = await _sut.LoginAsync("jdoe", "Passw0rd!");
+        var stored = _db.RefreshTokens.Single();
+        stored.ExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await _db.SaveChangesAsync();
+
+        var result = await _sut.RefreshAsync(login.RefreshToken!);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_ReplayOfRevokedToken_RevokesAllUserTokens()
+    {
+        await CreateLoggableUserAsync();
+        var first = await _sut.LoginAsync("jdoe", "Passw0rd!");
+        var second = await _sut.LoginAsync("jdoe", "Passw0rd!");
+        await _sut.RefreshAsync(first.RefreshToken!); // rotates: first is now revoked
+
+        var replay = await _sut.RefreshAsync(first.RefreshToken!);
+
+        Assert.False(replay.Succeeded);
+        Assert.All(_db.RefreshTokens, t => Assert.NotNull(t.RevokedAtUtc));
+        var secondUse = await _sut.RefreshAsync(second.RefreshToken!);
+        Assert.False(secondUse.Succeeded);
+    }
+
+    [Fact]
+    public async Task RevokeAsync_MakesTokenUnusable()
+    {
+        await CreateLoggableUserAsync();
+        var login = await _sut.LoginAsync("jdoe", "Passw0rd!");
+
+        await _sut.RevokeAsync(login.RefreshToken!);
+
+        Assert.NotNull(_db.RefreshTokens.Single().RevokedAtUtc);
+        var result = await _sut.RefreshAsync(login.RefreshToken!);
+        Assert.False(result.Succeeded);
     }
 
     [Fact]

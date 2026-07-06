@@ -1,11 +1,13 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using GestStack.Application.Common.Interfaces;
 using GestStack.Application.Common.Models;
 using GestStack.Application.Common.Security;
 using GestStack.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -15,6 +17,7 @@ public class AuthService(
     UserManager<AppUser> userManager,
     SignInManager<AppUser> signInManager,
     RoleManager<IdentityRole> roleManager,
+    AppDbContext dbContext,
     IOptions<JwtSettings> jwtOptions
 ) : IAuthService
 {
@@ -30,7 +33,7 @@ public class AuthService(
             if (!result.Succeeded)
                 return AuthResult.Failure(result.Errors.Select(e => e.Description));
 
-            return AuthResult.Success(await GenerateTokenAsync(user));
+            return AuthResult.Success(await GenerateTokenAsync(user), await IssueRefreshTokenAsync(user));
         }
         catch (Exception)
         {
@@ -54,8 +57,78 @@ public class AuthService(
                 result.IsLockedOut ? "Account is locked out." : "Invalid username or password."
             );
 
-        return AuthResult.Success(await GenerateTokenAsync(user));
+        return AuthResult.Success(await GenerateTokenAsync(user), await IssueRefreshTokenAsync(user));
     }
+
+    public async Task<AuthResult> RefreshAsync(string refreshToken)
+    {
+        var stored = await FindRefreshTokenAsync(refreshToken);
+        if (stored?.User is null)
+            return AuthResult.Failure("Invalid refresh token.");
+
+        if (stored.RevokedAtUtc is not null)
+        {
+            // A revoked token being replayed suggests it was stolen; cut off the whole session family.
+            var activeTokens = await dbContext
+                .RefreshTokens.Where(t => t.UserId == stored.UserId && t.RevokedAtUtc == null)
+                .ToListAsync();
+            foreach (var token in activeTokens)
+                token.RevokedAtUtc = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync();
+
+            return AuthResult.Failure("Invalid refresh token.");
+        }
+
+        if (!stored.IsActive)
+            return AuthResult.Failure("Invalid refresh token.");
+
+        stored.RevokedAtUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync();
+
+        return AuthResult.Success(
+            await GenerateTokenAsync(stored.User),
+            await IssueRefreshTokenAsync(stored.User)
+        );
+    }
+
+    public async Task RevokeAsync(string refreshToken)
+    {
+        var stored = await FindRefreshTokenAsync(refreshToken);
+        if (stored is null || stored.RevokedAtUtc is not null)
+            return;
+
+        stored.RevokedAtUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync();
+    }
+
+    private Task<RefreshToken?> FindRefreshTokenAsync(string refreshToken)
+    {
+        var hash = HashToken(refreshToken);
+        return dbContext
+            .RefreshTokens.Include(t => t.User)
+            .SingleOrDefaultAsync(t => t.TokenHash == hash);
+    }
+
+    private async Task<string> IssueRefreshTokenAsync(AppUser user)
+    {
+        var rawToken = Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(64));
+
+        dbContext.RefreshTokens.Add(
+            new RefreshToken
+            {
+                UserId = user.Id,
+                TokenHash = HashToken(rawToken),
+                CreatedAtUtc = DateTime.UtcNow,
+                ExpiresAtUtc = DateTime.UtcNow.AddDays(_jwt.RefreshTokenExpiryDays),
+            }
+        );
+        await dbContext.SaveChangesAsync();
+
+        return rawToken;
+    }
+
+    private static string HashToken(string token) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private async Task<string> GenerateTokenAsync(AppUser user)
     {
