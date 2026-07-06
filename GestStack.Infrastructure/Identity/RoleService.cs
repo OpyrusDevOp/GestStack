@@ -7,10 +7,8 @@ using Microsoft.AspNetCore.Identity;
 
 namespace GestStack.Infrastructure.Identity;
 
-public class RoleService(
-    RoleManager<IdentityRole> roleManager,
-    UserManager<AppUser> userManager
-) : IRoleService
+public class RoleService(RoleManager<IdentityRole> roleManager, UserManager<AppUser> userManager)
+    : IRoleService
 {
     public async Task<IReadOnlyList<RoleInfo>> GetRolesAsync()
     {
