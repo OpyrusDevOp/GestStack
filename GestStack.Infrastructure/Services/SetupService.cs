@@ -1,9 +1,14 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using GestStack.Application.Common.Interfaces;
 using GestStack.Application.Common.Models;
 using GestStack.Application.Common.Security;
+using GestStack.Infrastructure.Identity;
 using GestStack.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 namespace GestStack.Infrastructure.Services;
 
@@ -48,5 +53,29 @@ public class SetupService(UserManager<AppUser> userManager, AppDbContext dbConte
         var needSetup = !hasAdmin || !hasProfile;
 
         return new(needSetup, hasAdmin, hasProfile);
+    }
+
+    public static string GenerateSetupToken(JwtSettings jwt)
+    {
+        var claims = new List<Claim>
+        {
+            new(CustomClaims.Setup, "true"),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        };
+
+        var credentials = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
+            SecurityAlgorithms.HmacSha256
+        );
+
+        var token = new JwtSecurityToken(
+            issuer: jwt.Issuer,
+            audience: jwt.SetupAudience,
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(jwt.ExpiryMinutes),
+            signingCredentials: credentials
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

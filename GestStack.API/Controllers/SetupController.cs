@@ -1,6 +1,8 @@
+using GestStack.API.Authorization;
 using GestStack.API.Contracts.Setup;
 using GestStack.Application.Common.Interfaces;
 using GestStack.Application.Common.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GestStack.API.Controllers;
@@ -18,6 +20,7 @@ public class SetupController(ISetupService setupService) : ControllerBase
     }
 
     [HttpPost("set-admin")]
+    [Authorize(Policy = SetupAuth.Policy)]
     public async Task<IActionResult> CreateAdmin(CreateAdminRequest request)
     {
         var result = await setupService.CreateAdminAsync(

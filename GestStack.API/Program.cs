@@ -1,6 +1,8 @@
 using System.Text;
 using GestStack.API.Authorization;
 using GestStack.Application.Common.Interfaces;
+using GestStack.Application.Common.Security;
+using GestStack.Infrastructure;
 using GestStack.Infrastructure.Identity;
 using GestStack.Infrastructure.Persistence;
 using GestStack.Infrastructure.Services;
@@ -55,16 +57,43 @@ builder
             ValidAudience = jwtSettings.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key)),
         };
-    });
+    })
+    .AddJwtBearer(
+        SetupAuth.Scheme,
+        options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = jwtSettings.Issuer,
+                ValidAudience = jwtSettings.SetupAudience,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(jwtSettings.Key)
+                ),
+            };
+        }
+    );
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+    options.AddPolicy(
+        SetupAuth.Policy,
+        policy =>
+            policy
+                .AddAuthenticationSchemes(SetupAuth.Scheme)
+                .RequireAuthenticatedUser()
+                .RequireClaim(CustomClaims.Setup)
+    )
+);
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    await IdentityDataSeeder.SeedAsync(scope.ServiceProvider);
+    await GestStackInfrastructure.StartupSetup(scope.ServiceProvider, app.Logger, jwtSettings);
 }
 
 // Configure the HTTP request pipeline.

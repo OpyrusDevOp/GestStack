@@ -17,6 +17,7 @@ public class AuthServiceTests
     {
         Issuer = "GestStack.Tests",
         Audience = "GestStack.Tests",
+        SetupAudience = "GestStack.Tests-Setup",
         Key = "unit-test-signing-key-0123456789-abcdefghij",
         ExpiryMinutes = 30,
     };
