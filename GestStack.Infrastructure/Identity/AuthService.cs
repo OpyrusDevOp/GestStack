@@ -25,20 +25,16 @@ public class AuthService(
 
     public async Task<AuthResult> RegisterAsync(string username, string fullName, string password)
     {
-        try
-        {
-            var user = new AppUser { UserName = username, FullName = fullName };
+        var user = new AppUser { UserName = username, FullName = fullName };
 
-            var result = await userManager.CreateAsync(user, password);
-            if (!result.Succeeded)
-                return AuthResult.Failure(result.Errors.Select(e => e.Description));
+        var result = await userManager.CreateAsync(user, password);
+        if (!result.Succeeded)
+            return AuthResult.Failure(result.Errors.Select(e => e.Description));
 
-            return AuthResult.Success(await GenerateTokenAsync(user), await IssueRefreshTokenAsync(user));
-        }
-        catch (Exception)
-        {
-            return AuthResult.Failure("Something went wrong !!");
-        }
+        return AuthResult.Success(
+            await GenerateTokenAsync(user),
+            await IssueRefreshTokenAsync(user)
+        );
     }
 
     public async Task<AuthResult> LoginAsync(string username, string password)
@@ -57,7 +53,10 @@ public class AuthService(
                 result.IsLockedOut ? "Account is locked out." : "Invalid username or password."
             );
 
-        return AuthResult.Success(await GenerateTokenAsync(user), await IssueRefreshTokenAsync(user));
+        return AuthResult.Success(
+            await GenerateTokenAsync(user),
+            await IssueRefreshTokenAsync(user)
+        );
     }
 
     public async Task<AuthResult> RefreshAsync(string refreshToken)

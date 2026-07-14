@@ -16,6 +16,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
     <ProjectReference Include="..\GestStack.Infrastructure\GestStack.Infrastructure.csproj" />
   </ItemGroup>
 
