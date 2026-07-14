@@ -4,6 +4,7 @@ using System.Text;
 using GestStack.Application.Common.Interfaces;
 using GestStack.Application.Common.Models;
 using GestStack.Application.Common.Security;
+using GestStack.Domain.Entities;
 using GestStack.Infrastructure.Identity;
 using GestStack.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -42,6 +43,36 @@ public class SetupService(UserManager<AppUser> userManager, AppDbContext dbConte
             return OperationResult.Failure(roleResult.Errors.Select(e => e.Description));
 
         await transaction.CommitAsync();
+
+        return OperationResult.Success();
+    }
+
+    public async Task<OperationResult> CreateCompanyProfileAsync(
+        string legalName,
+        string? email,
+        string? country,
+        byte[]? logo,
+        string? logoContentType
+    )
+    {
+        var hasProfile = await dbContext.CompanyProfiles.AnyAsync();
+
+        if (hasProfile)
+            return OperationResult
+                .Failure("A company profile already exists.")
+                .WithErrorCode(SetupErrorCodes.CompanyProfileAlreadyExists);
+
+        var profile = new CompanyProfile
+        {
+            LegalName = legalName,
+            Email = email,
+            Country = country,
+            Logo = logo,
+            LogoContentType = logoContentType,
+        };
+
+        dbContext.CompanyProfiles.Add(profile);
+        await dbContext.SaveChangesAsync();
 
         return OperationResult.Success();
     }

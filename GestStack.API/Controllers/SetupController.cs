@@ -35,4 +35,23 @@ public class SetupController(ISetupService setupService) : ControllerBase
 
         return Created();
     }
+
+    [HttpPost("company-profile")]
+    [Authorize(Policy = SetupAuth.Policy)]
+    public async Task<IActionResult> CreateCompanyProfile(CreateCompanyProfileRequest request)
+    {
+        var result = await setupService.CreateCompanyProfileAsync(
+            request.LegalName,
+            request.Email,
+            request.Country,
+            request.Logo,
+            request.LogoContentType
+        );
+        if (!result.Succeeded)
+            return result.ErrorCode == SetupErrorCodes.CompanyProfileAlreadyExists
+                ? Conflict(new { result.Errors })
+                : BadRequest(new { result.Errors });
+
+        return Created();
+    }
 }
